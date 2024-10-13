@@ -1,20 +1,23 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-canvas.width = 1000;
-canvas.height = 1000;
+const restartBtn = document.getElementById('restartBtn');
+
+canvas.width = 400;
+canvas.height = 600;
 
 const birdImage = new Image();
-birdImage.src = 'https://i.postimg.cc/ZWZwFNPK/netanyahu.png'; // تأكد من استخدام الرابط المباشر
+birdImage.src = 'https://i.postimg.cc/ZWZwFNPK/netanyahu.png'; // رابط الصورة المباشر
 
 let birdY = canvas.height / 2;
-let gravity = 0.3; // تقليل الجاذبية
+let gravity = 0.3;
 let birdVelocity = 0;
 let columns = [];
 let gameStarted = false;
 let score = 0;
+let microphoneStream = null;
 
 function drawBird() {
-    ctx.drawImage(birdImage, 30, birdY, 150, 150); // تكبير الصورة إلى 60x60
+    ctx.drawImage(birdImage, 30, birdY, 60, 60); // تكبير الصورة إلى 60x60
 }
 
 function drawColumns() {
@@ -38,7 +41,7 @@ function updateColumns() {
 
 function detectCollision() {
     for (let column of columns) {
-        if (60 + 30 > column.x && 30 - 30 < column.x + 50) { // تعديل القياسات لتناسب الصورة
+        if (60 + 30 > column.x && 30 - 30 < column.x + 50) {
             if (birdY - 30 < column.gapStart || birdY + 30 > column.gapStart + 150) {
                 gameOver();
             }
@@ -51,8 +54,9 @@ function detectCollision() {
 }
 
 function gameOver() {
-    alert('Game Over! Score: ' + score);
-    document.location.reload();
+    alert('Game Over! Your Score: ' + score);
+    restartBtn.classList.remove('hidden'); // إظهار زر إعادة التشغيل
+    gameStarted = false;
 }
 
 function gameLoop() {
@@ -82,32 +86,43 @@ function startGame() {
         { x: canvas.width + 200, gapStart: Math.random() * (canvas.height - 300) + 100 }
     ];
 
-    if (navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(function(stream) {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const microphone = audioContext.createMediaStreamSource(stream);
-            const analyser = audioContext.createAnalyser();
-            microphone.connect(analyser);
-            analyser.fftSize = 512;
+    if (!microphoneStream) { // طلب إذن الميكروفون مرة واحدة فقط
+        if (navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function(stream) {
+                microphoneStream = stream; // حفظ الوصول إلى الميكروفون
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const microphone = audioContext.createMediaStreamSource(stream);
+                const analyser = audioContext.createAnalyser();
+                microphone.connect(analyser);
+                analyser.fftSize = 512;
 
-            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-            function checkVolume() {
-                analyser.getByteFrequencyData(dataArray);
-                const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
-                if (volume > 50) {
-                    birdVelocity = -10; // زيادة الارتفاع عند رفع الصوت
+                function checkVolume() {
+                    if (!gameStarted) return; // لا حاجة لتحليل الصوت إذا كانت اللعبة متوقفة
+                    analyser.getByteFrequencyData(dataArray);
+                    const volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                    if (volume > 50) {
+                        birdVelocity = -10; // زيادة الارتفاع عند رفع الصوت
+                    }
+                    requestAnimationFrame(checkVolume);
                 }
-                requestAnimationFrame(checkVolume);
-            }
 
-            checkVolume();
-        })
-        .catch(function(err) {
-            console.log('The following error occurred: ' + err);
-        });
+                checkVolume();
+            })
+            .catch(function(err) {
+                console.log('The following error occurred: ' + err);
+            });
+        }
     }
 
+    restartBtn.classList.add('hidden'); // إخفاء زر إعادة التشغيل عند بدء اللعبة
     gameLoop();
 }
+
+// إعادة تشغيل اللعبة عند النقر على زر إعادة التشغيل
+restartBtn.addEventListener('click', startGame);
+
+// بدء اللعبة عند تحميل الصفحة
+startGame();
